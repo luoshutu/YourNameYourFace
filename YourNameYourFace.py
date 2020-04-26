@@ -45,6 +45,7 @@ plt.show()
 ## 二、取出目标区域
 #### 对关键点坐标值做一个大小判断，取出待重组的图像区域。
 
+'''
 # 解压图片
 import zipfile
 
@@ -56,7 +57,8 @@ num_Image = len(z.namelist()) - 1    # 总的图片数量
 path_Image = './data/'
 #with zipfile.ZipFile(path_zip, 'r') as zin:
 #    zin.extractall(path_Image)
-
+'''
+num_Image = 638    # 总的图片数量
 points = np.mat(result[0]['data'][0])
 # 获取待重组的矩形局域的两个坐标值
 point_a = np.floor(np.amin(points, axis=0))
@@ -64,13 +66,13 @@ point_d = np.ceil(np.amax(points, axis=0))
 
 # 计算目标区域所占大小，以及用与重组的图像应该缩放为多大
 ROI_area = (point_d[0, 0] - point_a[0, 0])*(point_d[0, 1] - point_a[0, 1])
-# 每张图片不重复，则需要的每张图片所占的大小
-single_image_area = ROI_area / num_Image 
+# 每张图片不重复，则需要的每张图片所占的大小，再除以10
+single_image_area = (ROI_area / num_Image) / 10
 
 ## 三、组合图片
 #### 计算特征向量，以 R/G/B 三个通道分别求平均值作为特征。
 
-path_Images =  './data/your_name/out'
+path_Images =  'F:/picture/your_name/out'
 
 # 压缩图像至固定大小
 def pic_compression(src_pic):
@@ -85,14 +87,14 @@ def pic_compression(src_pic):
     return cv2.resize(src_pic,(int(target_weight),int(target_high))), target_high, target_weight
 
 # 计算图像的RGB特征
-pic_feature = np.zeros([num_Image,3]) # 特征向量
-for indexImg in range(3,num_Image+3):
-#for indexImg in (9,10):
-    path_pic = path_Images + str(indexImg) +'.png'
-    pic_comed,th,tw = pic_compression(cv2.imread(path_pic))
+feature_dim = 3 # 特征维度 R、G、B 共三维
+pic_feature = np.zeros([num_Image,feature_dim]) # 特征向量
+for indexImg in range(3,num_Image+3-1):  # 图片索引由3开始
+    path_pic = path_Images + str(indexImg) +'.png' # 获取每张图片的地址
+    pic = cv2.imread(path_pic)
+    pic_comed,th,tw = pic_compression(pic.copy()) # 计算得到压缩图像
     for idx in range(len(pic_feature[0])):
         pic_feature[indexImg-3,idx] = np.average(pic_comed[:-1,:-1,idx])
-            
 
 #### 计算脸部各块的RGB特征并贴图
 # 抠出待组合区域图像
@@ -101,19 +103,21 @@ right_p = int(point_d[0, 0])
 top_p = int(point_a[0, 1])
 bottom_p = int(point_d[0, 1])
 # 得到目标图像
-ROI_Image = src_img[top_p:bottom_p, left_p:right_p]
+temp_Image = src_img.copy()
+ROI_Image = temp_Image[top_p:bottom_p, left_p:right_p]
 
-block_feature = np.zeros(len(pic_feature[0])) # 每一图块的特征
+block_feature = np.zeros(feature_dim) # 每一图块的特征
 blo_fea_buff = np.zeros(num_Image)  # 缓存每一图块特征到所有图片特征的欧式距离值
-for idx_i in range(0, len(ROI_Image[0])-int(th), int(th)):
-    for idx_j in range(0, len(ROI_Image[1])-2*int(tw), int(tw)):
+for idx_i in range(0, len(ROI_Image)-int(th), int(th)):
+    for idx_j in range(0, len(ROI_Image[1])-int(tw), int(tw)):
         for idx in range(len(pic_feature[0])):
             block_feature[idx] = np.average(ROI_Image[idx_i:idx_i+int(th),idx_j:idx_j+int(tw),idx])
         for img_idx in range(0,num_Image):
             blo_fea_buff[img_idx] = np.linalg.norm(block_feature - pic_feature[img_idx])
-        pic_idx = np.argmin(blo_fea_buff)+3 # 获取到最小欧式距离的图片索引
+        pic_idx = np.argmin(blo_fea_buff) + 3 # 获取到最小欧式距离的图片索引
         path_pic = path_Images + str(int(pic_idx)) +'.png'
-        pic_comed,_,_ = pic_compression(cv2.imread(path_pic)) # 计算得到压缩图像
+        pic = cv2.imread(path_pic)
+        pic_comed,_,_ = pic_compression(pic.copy()) # 计算得到压缩图像
         ROI_Image[idx_i:idx_i+int(th),idx_j:idx_j+int(tw)] = pic_comed
 
 ##### 将重组得到的脸按形状贴到原图上
@@ -138,14 +142,12 @@ def mask(image, face_landmark):
 
 # 获取人脸关键点数据，和原始图像
 face_landmark = np.array(result[0]['data'][0], dtype='int')
-src_image = mask(cv2.imread('single_face.jpg'), face_landmark)
+result_image = mask(src_img.copy(), face_landmark)
 
-cv2.imwrite('result.jpg', src_image)
+cv2.imwrite('result.jpg', result_image)
 
 img = mpimg.imread('result.jpg') 
 plt.figure(figsize=(10,10))
 plt.imshow(img) 
 plt.axis('off') 
 plt.show()
-
-
